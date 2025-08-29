@@ -1,12 +1,15 @@
+import os
+import streamlit as st
 from openai import OpenAI, RateLimitError, APIError, AuthenticationError
 import google.generativeai as genai
-import streamlit as st
 
-# --- init clients ---
-oai = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", None))
-genai.configure(api_key=st.secrets.get("GOOGLE_API_KEY", None))
+OPENAI_API_KEY  = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
+GOOGLE_API_KEY  = st.secrets.get("GOOGLE_API_KEY", os.getenv("GOOGLE_API_KEY"))
 
-# --- fungsi pemanggil ---
+oai = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+if GOOGLE_API_KEY:
+    genai.configure(api_key=GOOGLE_API_KEY)
+
 def call_openai(messages, model="gpt-4o-mini", temperature=0.7, top_p=1.0, max_tokens=512):
     if not oai.api_key:
         return "⚠️ OPENAI_API_KEY belum diset. Silakan pakai Gemini."
@@ -29,7 +32,7 @@ def call_openai(messages, model="gpt-4o-mini", temperature=0.7, top_p=1.0, max_t
         return f"⚠️ Error tak terduga: {e}"
 
 def call_gemini(messages, model="gemini-1.5-flash", temperature=0.7, top_p=1.0, top_k=40, max_tokens=512):
-    if not genai.api_key:
+    if not GOOGLE_API_KEY:  
         return "⚠️ GOOGLE_API_KEY belum diset."
     try:
         m = genai.GenerativeModel(model)
@@ -46,7 +49,6 @@ def call_gemini(messages, model="gemini-1.5-flash", temperature=0.7, top_p=1.0, 
     except Exception as e:
         return f"⚠️ Gemini error: {e}"
 
-# --- UI ---
 st.set_page_config(page_title="Mini Assignment C1", page_icon="💬")
 
 if "messages" not in st.session_state:
@@ -54,12 +56,10 @@ if "messages" not in st.session_state:
 
 st.title("LLM Chat – Mini Assignment C1")
 
-# tampilkan riwayat
 for m in st.session_state.messages:
     with st.chat_message("assistant" if m["role"]=="assistant" else "user"):
         st.markdown(m["content"])
 
-# input chat
 user_msg = st.chat_input("Tulis pesanmu…")
 
 with st.sidebar:
@@ -78,14 +78,11 @@ with st.sidebar:
     top_k       = st.slider("Top-K (Gemini)", 0, 100, 40, 1)
     max_tokens  = st.slider("Max tokens (output)", 0, 4096, 512, 64)
 
-# === proses chat ===
 if user_msg:
-    # tampilkan pesan user langsung
     with st.chat_message("user"):
         st.markdown(user_msg)
     st.session_state.messages.append({"role":"user","content":user_msg})
 
-    # panggil model
     with st.chat_message("assistant"):
         with st.spinner("Memikirkan jawaban…"):
             msgs = [{"role": x["role"], "content": x["content"]} for x in st.session_state.messages]
@@ -96,7 +93,6 @@ if user_msg:
             st.markdown(reply)
     st.session_state.messages.append({"role":"assistant","content":reply})
 
-# === summarize ===
 def summarize_history(provider, model_name, temperature, top_p, top_k, max_tokens):
     convo = "\n".join(
         ["User: "+m["content"] if m["role"]=="user" else "Assistant: "+m["content"]
