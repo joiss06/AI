@@ -76,7 +76,7 @@ with st.sidebar:
     temperature = st.slider("Temperature", 0.0, 2.0, 0.7, 0.1)
     top_p       = st.slider("Top-P",       0.0, 1.0, 1.0, 0.05)
     top_k       = st.slider("Top-K", 0, 100, 40, 1)
-    max_tokens  = st.slider("Max tokens (output)", 0, 4096, 512, 64)
+    max_tokens  = st.slider("Max tokens", 0, 4096, 512, 64)
 
 if user_msg:
     with st.chat_message("user"):
