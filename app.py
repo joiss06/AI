@@ -1,33 +1,52 @@
-from openai import OpenAI
-oai = OpenAI()  # otomatis baca OPENAI_API_KEY dari env/secrets
-
-def call_openai(messages, model="gpt-4o-mini", temperature=0.7, top_p=1.0, max_tokens=512):
-    resp = oai.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        top_p=top_p,
-        max_tokens=max_tokens
-    )
-    return resp.choices[0].message.content
-
+from openai import OpenAI, RateLimitError, APIError, AuthenticationError
 import google.generativeai as genai
-genai.configure()
+import streamlit as st
+
+# --- init clients ---
+oai = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", None))
+genai.configure(api_key=st.secrets.get("GOOGLE_API_KEY", None))
+
+# --- fungsi pemanggil ---
+def call_openai(messages, model="gpt-4o-mini", temperature=0.7, top_p=1.0, max_tokens=512):
+    if not oai.api_key:
+        return "⚠️ OPENAI_API_KEY belum diset. Silakan pakai Gemini."
+    try:
+        resp = oai.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens
+        )
+        return resp.choices[0].message.content
+    except RateLimitError:
+        return "⚠️ Terlalu banyak permintaan / tokenmu tidak cukup."
+    except AuthenticationError:
+        return "⚠️ API key OpenAI salah atau tidak aktif."
+    except APIError as e:
+        return f"⚠️ OpenAI API error: {e}"
+    except Exception as e:
+        return f"⚠️ Error tak terduga: {e}"
 
 def call_gemini(messages, model="gemini-1.5-flash", temperature=0.7, top_p=1.0, top_k=40, max_tokens=512):
-    m = genai.GenerativeModel(model)
-    history = []
-    for msg in messages[:-1]:
-        role = "user" if msg["role"] == "user" else "model"
-        history.append({"role": role, "parts": [msg["content"]]})
-    user_text = messages[-1]["content"]
-    chat = m.start_chat(history=history)
-    cfg = genai.types.GenerationConfig(
-        temperature=temperature, top_p=top_p, top_k=top_k, max_output_tokens=max_tokens
-    )
-    return chat.send_message(user_text, generation_config=cfg).text
+    if not genai.api_key:
+        return "⚠️ GOOGLE_API_KEY belum diset."
+    try:
+        m = genai.GenerativeModel(model)
+        history = []
+        for msg in messages[:-1]:
+            role = "user" if msg["role"] == "user" else "model"
+            history.append({"role": role, "parts": [msg["content"]]})
+        user_text = messages[-1]["content"]
+        chat = m.start_chat(history=history)
+        cfg = genai.types.GenerationConfig(
+            temperature=temperature, top_p=top_p, top_k=top_k, max_output_tokens=max_tokens
+        )
+        return chat.send_message(user_text, generation_config=cfg).text
+    except Exception as e:
+        return f"⚠️ Gemini error: {e}"
 
-import streamlit as st
+# --- UI ---
 st.set_page_config(page_title="Mini Assignment C1", page_icon="💬")
 
 if "messages" not in st.session_state:
@@ -42,8 +61,6 @@ for m in st.session_state.messages:
 
 # input chat
 user_msg = st.chat_input("Tulis pesanmu…")
-if user_msg:
-    st.session_state.messages.append({"role":"user","content":user_msg})
 
 with st.sidebar:
     st.subheader("Model Settings")
@@ -61,7 +78,14 @@ with st.sidebar:
     top_k       = st.slider("Top-K (Gemini)", 0, 100, 40, 1)
     max_tokens  = st.slider("Max tokens (output)", 0, 4096, 512, 64)
 
+# === proses chat ===
 if user_msg:
+    # tampilkan pesan user langsung
+    with st.chat_message("user"):
+        st.markdown(user_msg)
+    st.session_state.messages.append({"role":"user","content":user_msg})
+
+    # panggil model
     with st.chat_message("assistant"):
         with st.spinner("Memikirkan jawaban…"):
             msgs = [{"role": x["role"], "content": x["content"]} for x in st.session_state.messages]
@@ -72,6 +96,7 @@ if user_msg:
             st.markdown(reply)
     st.session_state.messages.append({"role":"assistant","content":reply})
 
+# === summarize ===
 def summarize_history(provider, model_name, temperature, top_p, top_k, max_tokens):
     convo = "\n".join(
         ["User: "+m["content"] if m["role"]=="user" else "Assistant: "+m["content"]
